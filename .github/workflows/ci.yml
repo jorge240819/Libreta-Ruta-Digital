@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:   # Permite ejecutar manualmente desde Actions -> Run workflow
   push:
     branches: [ main, develop, "feature/**" ]
   pull_request:
@@ -14,22 +15,49 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Show workspace & repo files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Workspace content (root):"
+          ls -la
+          echo "Git-tracked files (first 200):"
+          git ls-files | sed -n '1,200p'
+
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        working-directory: backend
+      - name: Verify Python & pip
         run: |
+          python -V
+          pip -V
+
+      - name: Install dependencies (backend)
+        run: |
+          if [ ! -f backend/requirements.txt ]; then
+            echo "ERROR: backend/requirements.txt NO existe" >&2
+            exit 1
+          fi
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r backend/requirements.txt
           pip install pytest
 
       - name: Lint (basic syntax check)
         run: |
-          python -m py_compile $(git ls-files '*.py') || true
+          PY_FILES="$(git ls-files '*.py' || true)"
+          if [ -n "$PY_FILES" ]; then
+            echo "Linting these files:"
+            echo "$PY_FILES"
+            python -m py_compile $PY_FILES || true
+          else
+            echo "No hay archivos .py aún, omitimos lint"
+          fi
 
       - name: Run tests (pytest)
         run: |
-          pytest -q || true
+          if [ -d backend/tests ]; then
+            pytest -q backend/tests || true
+          else
+            echo "No hay carpeta backend/tests, omitimos tests"
+          fi
